@@ -1,0 +1,4 @@
+Compiled object files, libraries, etc.
+*.a
+*.so
+*.o
