@@ -91,15 +91,39 @@ void naive_free(void* ptr) {
 	}
 }
 
+/** number of bytes of memory used 
+ *  used to determine if call to free() worked */ 
+static long get_used_memory_info() {
+	FILE* mem_info = fopen("/proc/self/statm", "r");
+	if (mem_info == NULL) {
+		return -1;
+	}
+	const int max_digits = 19; /*maximum binary digits of 64-bit numbers*/
+	const int num_fields = 7; /* integer fields in /proc/self/statm */
+	const int buf_size = (max_digits+1)*num_fields+2;
+	long size, resident, shared, text, lib, data, dt;
+	char buf[buf_size];
+
+	fgets(buf, buf_size, mem_info);
+	sscanf(buf, "%ld %ld %ld %ld %ld %ld %ld",
+		&size, &resident, &shared, &text, &lib, &data, &dt);
+	fclose(mem_info);
+	return size;
+}
+
 int main() {
+	long before_malloc = get_used_memory_info();
+	printf("used pages of memory before allocation: %ld\n", before_malloc);
 	size_t array_size = 100000000l;
 	int* ptr = naive_malloc(array_size*sizeof(int));
-	for(size_t i=0; i<array_size; i++) {
-		ptr[i] = (int)i;
-	}
-	for(size_t i=0; i<array_size; i++) {
-		assert(ptr[i] == (int)i);
-	}
+	long before_free = get_used_memory_info();
+	printf("used pages of memory after allocation: %ld\n", before_free);
 	naive_free(ptr);
-	sleep(60); //wait so you can make sure naive_free() actually worked
+	long after_free = get_used_memory_info();
+	printf("used pages of memory after free: %ld\n", after_free);
+	if(after_free >= before_free) {
+		perror("Call to naive_free() failed. This is unacceptable!");
+		return -1;
+	}
+	return 0;
 }
