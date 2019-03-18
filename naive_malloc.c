@@ -38,9 +38,11 @@ void* naive_malloc(size_t size) {
 	if (size == 0) {
 		return NULL;
 	}
-	/** size in bytes of a page of memory */
+	/* size in bytes of a page of memory */
 	size_t page_size = sysconf(_SC_PAGESIZE) == -1 ? 4096 : sysconf(_SC_PAGESIZE);
+	/* size in bytes that needs to be allocated */
 	size_t size_with_header = size + header_size*sizeof(size_t);
+	/* number of pages to allocate */
 	size_t pages = size_with_header / page_size + 1;
 	size_t mmap_size = pages * page_size;
 	struct page_header* ptr = mmap(0, mmap_size,
@@ -48,11 +50,13 @@ void* naive_malloc(size_t size) {
 	if (ptr == MAP_FAILED) {
 		return NULL;
 	}
+	/* copy values to page header */
 	ptr->pages = pages;
 	ptr->page_size = page_size;
 	return ptr->page_data;
 }
 
+/** Helper function. Zero initalized memory */
 void zero_ptr(char* start, size_t size) {
 	for(char* ptr = start; ptr<start+size; ptr++) {
 		*ptr = 0;
