@@ -6,9 +6,6 @@
 #include <stdio.h>
 #include <assert.h>
 
-/**number of fields of size_t in the page header*/
-static const size_t header_size = 2;
-
 struct page_header {
 	size_t pages;
 	size_t page_size;
@@ -41,7 +38,7 @@ void* naive_malloc(size_t size) {
 	/* size in bytes of a page of memory */
 	size_t page_size = sysconf(_SC_PAGESIZE) == -1 ? 4096 : sysconf(_SC_PAGESIZE);
 	/* size in bytes that needs to be allocated */
-	size_t size_with_header = size + header_size*sizeof(size_t);
+	size_t size_with_header = size + sizeof(struct page_header);
 	/* number of pages to allocate */
 	size_t pages = size_with_header / page_size + 1;
 	size_t mmap_size = pages * page_size;
@@ -71,8 +68,7 @@ void* naive_calloc(size_t nmemb, size_t size) {
 		}
 		return NULL;
 	}
-	struct page_header* header = (struct page_header*)
-			((size_t*)naive_malloc(size)-header_size);
+	struct page_header* header = naive_malloc(size)-sizeof(struct page_header);
 	zero_ptr(header->page_data, bytes);
 	return header->page_data;
 }
@@ -84,7 +80,7 @@ void naive_free(void* ptr) {
 	if (ptr == NULL) {
 		return;
 	}
-	struct page_header* header = (struct page_header*)((size_t*)ptr-header_size);
+	struct page_header* header = ptr-sizeof(struct page_header);
 	int res = munmap(header, header->pages*header->page_size);
 	if (res == -1) {
 		puts("Error freeing!");
