@@ -1,25 +1,33 @@
 .POSIX:
+# Eliminate default known suffixes
 .SUFFIXES:
 
 CC:=gcc
 CFLAGS:=-Wall -Wextra
-DEBUGCFLAGS:=-Werror -pedantic -g -DDEBUG
+# This is a lot of flags. For an explaination, see
+# https://stackoverflow.com/a/3376483/6677437
+# https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html
+DEBUGCFLAGS:=-Werror -pedantic -g -Og -DDEBUG -Wfloat-equal -Wundef \
+-Wshadow -Wpointer-arith -Wstrict-prototypes \
+-Wwrite-strings -Wcast-qual -Wswitch-default -Wswitch-enum \
+-Wconversion -Wstrict-overflow=3 -march=native
+RELEASECFLAGS:=-O3
 
-all: ; @echo -e "This makefile uses 'debug' and 'release' targets, but \n\
-intentionally excludes all. Please make release or make debug."
+all: ; @echo -e "This makefile uses 'debug' and 'release' targets, but \
+intentionally excludes all.\n Please make release or make debug."
 
+
+
+# Target-specific variable value, see
+# https://stackoverflow.com/questions/1079832/how-can-i-configure-my-makefile-for-debug-and-release-builds
 debug: CFLAGS += $(DEBUGCFLAGS)
-debug: release
+debug: naive_malloc.o
 
+release: CFLAGS += $(RELEASECFLAGS)
 release: naive_malloc.o
 
 naive_malloc.o: naive_malloc.c
 	$(CC) $(CFLAGS) $? -o $@
-
-#https://blog.jgc.org/2015/04/the-one-line-you-should-add-to-every.html
-#Example use: make print-CC
-#To print the value of the CC variable
-print-%: ; @echo $*=$($*)
 	
 clean:
 	rm -f naive_malloc.o

@@ -16,7 +16,7 @@ struct page_header {
  * Takes a void* pointer as returned by malloc and returns the corresponding
  * page_header. Fails if the initial pointer was not returned by malloc
  */
-static struct page_header* ptr_to_page_header(void* ptr) {
+static struct page_header* void_to_page_header(void* ptr) {
 	return (struct page_header*)((char*)ptr - sizeof(struct page_header));
 }
 
@@ -27,7 +27,7 @@ void naive_free(void* ptr) {
 	if (ptr == NULL) {
 		return;
 	}
-	struct page_header* header = ptr-sizeof(struct page_header);
+	struct page_header* header = void_to_page_header(ptr);
 	int res = munmap(header, header->pages*header->page_size);
 	if (res == -1) {
 		puts("Error freeing!");
@@ -42,23 +42,28 @@ void naive_free(void* ptr) {
  *  Allocates at least one page of memory for each call to simplify the logic
  *  Very inefficient for many small mallocs, but effective for one big malloc
  *  returns
- *   ________ ____ ____ ____        Page boundary
- *  | number |    |more|    |       |
- *  |   of   |data|data|etc |  ...  |
- *  | pages  |    |    |    |       |
- *   -------- ---- ---- ----
+ *   ________ _______ _______ ____     Page boundary
+ *  | number |       |       |    |    |
+ *  |   of   |data[0]|data[1]|... |    |
+ *  | pages  |       |       |    |    |
+ *   -------- ------- ------- ----
  *
- *  |--------|----|
+ *  |--------|-------|
  *   size_t   sizeof(char)
- *         |----------------|
- *         sizeof(char) * bytes
+ *           |--------------------|
+ *            sizeof(char) * bytes
  */
 static struct page_header* naive_malloc_internal(size_t size) {
 	if (size == 0) {
 		return NULL;
 	}
 	/* size in bytes of a page of memory */
-	const size_t page_size = sysconf(_SC_PAGESIZE) == -1 ? 4096 : sysconf(_SC_PAGESIZE);
+	size_t page_size;
+	{
+		long tmp_pagesize = sysconf(_SC_PAGESIZE);
+		const size_t default_pagesize = 4096;
+		page_size = tmp_pagesize < 0 ? default_pagesize : (size_t)tmp_pagesize;
+	}
 	/* size in bytes that needs to be allocated */
 	size_t size_with_header = size + sizeof(struct page_header);
 	/* number of pages to allocate */
@@ -105,13 +110,13 @@ void* naive_calloc(size_t nmemb, size_t size) {
 void* naive_realloc(void* ptr, size_t size) {
 	// shortcut: if there is already enough allocated space,
 	// return passed pointer
-	struct page_header* page = ptr_to_page_header(ptr);
+	struct page_header* page = void_to_page_header(ptr);
 	size_t start_size = page->pages * page->page_size;
 	if (size < start_size) {
 		return ptr;
 	}
 	struct page_header* new_page = naive_malloc_internal(size);
-	for (size_t i; i<start_size; i++) {
+	for (size_t i=0; i<start_size; i++) {
 		new_page->page_data[i] = page->page_data[i];
 	}
 	naive_free(ptr);
@@ -120,33 +125,34 @@ void* naive_realloc(void* ptr, size_t size) {
 
 /** number of bytes of memory used 
  *  used to determine if call to free() worked */ 
-static long get_used_memory_info() {
+static long get_used_memory(void) {
 	FILE* mem_info = fopen("/proc/self/statm", "r");
 	if (mem_info == NULL) {
+		perror("Failed to open /proc/self/statm in get_used_memory()");
 		return -1;
 	}
-	const int max_digits = 19; /*maximum binary digits of 64-bit numbers*/
-	const int num_fields = 7; /* integer fields in /proc/self/statm */
-	const int buf_size = (max_digits+1)*num_fields+2;
 	long size, resident, shared, text, lib, data, dt;
-	char buf[buf_size];
-
-	fgets(buf, buf_size, mem_info);
+	// each field has a maximum length of 19 = log_10(2^(64-1)) and there are 
+	//7 fields in /proc/self/statm
+	// With space delimiters and a trailing \0 this comes out to (19+1)*7 + 1 = 141
+	// Round to 150 just to be safe
+	char buf[150];
+	fgets(buf, sizeof(buf), mem_info);
 	sscanf(buf, "%ld %ld %ld %ld %ld %ld %ld",
 		&size, &resident, &shared, &text, &lib, &data, &dt);
 	fclose(mem_info);
 	return size;
 }
 
-int main() {
-	long before_malloc = get_used_memory_info();
+int main(void) {
+	long before_malloc = get_used_memory();
 	printf("used pages of memory before allocation: %ld\n", before_malloc);
 	size_t array_size = 100000000l;
 	int* ptr = naive_malloc(array_size*sizeof(int));
-	long before_free = get_used_memory_info();
+	long before_free = get_used_memory();
 	printf("used pages of memory after allocation: %ld\n", before_free);
 	naive_free(ptr);
-	long after_free = get_used_memory_info();
+	long after_free = get_used_memory();
 	printf("used pages of memory after free: %ld\n", after_free);
 	if(after_free >= before_free) {
 		perror("Call to naive_free() failed. This is unacceptable!");
