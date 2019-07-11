@@ -12,6 +12,28 @@ struct page_header {
 	char page_data[]; //the rest of the page(s) of memory
 };
 
+/**
+ * Takes a void* pointer as returned by malloc and returns the corresponding
+ * page_header. Fails if the initial pointer was not returned by malloc
+ */
+static struct page_header* ptr_to_page_header(void* ptr) {
+	return (struct page_header*)((char*)ptr - sizeof(struct page_header));
+}
+
+/** The simplest free()-ish function possible 
+ *  Fails if the user has managed to modify the malloc header 
+ */
+void naive_free(void* ptr) {
+	if (ptr == NULL) {
+		return;
+	}
+	struct page_header* header = ptr-sizeof(struct page_header);
+	int res = munmap(header, header->pages*header->page_size);
+	if (res == -1) {
+		puts("Error freeing!");
+	}
+}
+
 /** The simplest malloc()-ish function possible 
  *  
  *  Allocates the required number of pages of memory, places some header 
@@ -31,12 +53,12 @@ struct page_header {
  *         |----------------|
  *         sizeof(char) * bytes
  */
-void* naive_malloc(size_t size) {
+static struct page_header* naive_malloc_internal(size_t size) {
 	if (size == 0) {
 		return NULL;
 	}
 	/* size in bytes of a page of memory */
-	size_t page_size = sysconf(_SC_PAGESIZE) == -1 ? 4096 : sysconf(_SC_PAGESIZE);
+	const size_t page_size = sysconf(_SC_PAGESIZE) == -1 ? 4096 : sysconf(_SC_PAGESIZE);
 	/* size in bytes that needs to be allocated */
 	size_t size_with_header = size + sizeof(struct page_header);
 	/* number of pages to allocate */
@@ -50,11 +72,15 @@ void* naive_malloc(size_t size) {
 	/* copy values to page header */
 	ptr->pages = pages;
 	ptr->page_size = page_size;
-	return ptr->page_data;
+	return ptr;
+}
+
+void* naive_malloc(size_t size) {
+	return naive_malloc_internal(size)->page_data;
 }
 
 /** Helper function. Zero initalized memory */
-void zero_ptr(char* start, size_t size) {
+static void zero_ptr(char* start, size_t size) {
 	for(char* ptr = start; ptr<start+size; ptr++) {
 		*ptr = 0;
 	}
@@ -62,29 +88,34 @@ void zero_ptr(char* start, size_t size) {
 
 void* naive_calloc(size_t nmemb, size_t size) {
 	size_t bytes = nmemb * size;
-	if (nmemb != 0 && bytes / nmemb != size) { // overflow check
+	if (nmemb == 0 || size == 0) {
+		return NULL;
+	}
+	if (bytes / nmemb != size) { // overflow check
 		if (!errno) {
 			errno = EINVAL;
 		}
 		return NULL;
 	}
-	struct page_header* header = naive_malloc(size)-sizeof(struct page_header);
-	zero_ptr(header->page_data, bytes);
+	struct page_header* header = naive_malloc_internal(bytes);
+	zero_ptr((char*)header, bytes + sizeof(struct page_header));
 	return header->page_data;
 }
 
-/** The simplest free()-ish function possible 
- *  Fails if the user has managed to modify the malloc header 
- */
-void naive_free(void* ptr) {
-	if (ptr == NULL) {
-		return;
+void* naive_realloc(void* ptr, size_t size) {
+	// shortcut: if there is already enough allocated space,
+	// return passed pointer
+	struct page_header* page = ptr_to_page_header(ptr);
+	size_t start_size = page->pages * page->page_size;
+	if (size < start_size) {
+		return ptr;
 	}
-	struct page_header* header = ptr-sizeof(struct page_header);
-	int res = munmap(header, header->pages*header->page_size);
-	if (res == -1) {
-		puts("Error freeing!");
+	struct page_header* new_page = naive_malloc_internal(size);
+	for (size_t i; i<start_size; i++) {
+		new_page->page_data[i] = page->page_data[i];
 	}
+	naive_free(ptr);
+	return new_page->page_data;
 }
 
 /** number of bytes of memory used 
