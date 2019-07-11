@@ -2,9 +2,16 @@
 .SUFFIXES:
 
 CC:=gcc
-CFLAGS=-Wall -Wextra
+CFLAGS:=-Wall -Wextra
+DEBUGCFLAGS:=-Werror -pedantic -g -DDEBUG
 
-all: naive_malloc.o
+all: ; @echo -e "This makefile uses 'debug' and 'release' targets, but \n\
+intentionally excludes all. Please make release or make debug."
+
+debug: CFLAGS += $(DEBUGCFLAGS)
+debug: release
+
+release: naive_malloc.o
 
 naive_malloc.o: naive_malloc.c
 	$(CC) $(CFLAGS) $? -o $@
