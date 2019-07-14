@@ -30,7 +30,7 @@ void naive_free(void* ptr) {
 	struct page_header* header = void_to_page_header(ptr);
 	int res = munmap(header, header->pages*header->page_size);
 	if (res == -1) {
-		puts("Error freeing!");
+		perror("Error freeing!");
 	}
 }
 
