@@ -3,7 +3,7 @@
 .SUFFIXES:
 
 CC:=gcc
-CFLAGS:=-Wall -Wextra
+CFLAGS:=-Wall -Wextra -I. -L.
 # This is a lot of flags. For an explaination, see
 # https://stackoverflow.com/a/3376483/6677437
 # https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html
@@ -21,13 +21,16 @@ intentionally excludes all.\n Please make release or make debug."
 # Target-specific variable value, see
 # https://stackoverflow.com/questions/1079832/how-can-i-configure-my-makefile-for-debug-and-release-builds
 debug: CFLAGS += $(DEBUGCFLAGS)
-debug: naive_malloc.o
+debug: test.o
 
 release: CFLAGS += $(RELEASECFLAGS)
-release: naive_malloc.o
+release: test.o
+
+test.o: test.c naive_malloc.o
+	$(CC) $(CFLAGS) $? -o $@
 
 naive_malloc.o: naive_malloc.c
-	$(CC) $(CFLAGS) $? -o $@
-	
+	$(CC) -c $(CFLAGS) $? -o $@
+
 clean:
-	rm -f naive_malloc.o
+	rm -f test.o naive_malloc.o
